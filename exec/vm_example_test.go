@@ -7,12 +7,10 @@ package exec_test
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
-	"log"
-	"reflect"
-
 	"github.com/go-interpreter/wagon/exec"
 	"github.com/go-interpreter/wagon/wasm"
+	"io/ioutil"
+	"log"
 )
 
 func ExampleVM_add() {
@@ -44,9 +42,9 @@ func ExampleVM_add() {
 			// create a whole new module, called "go", from scratch.
 			// this module will contain one exported function "print",
 			// implemented itself in pure Go.
-			print := func(proc *exec.Process, v int32) {
-				fmt.Printf("result = %v\n", v)
-			}
+			//print := func(proc *exec.Process, v int32) {
+			//	fmt.Printf("result = %v\n", v)
+			//}
 
 			m := wasm.NewModule()
 			m.Types = &wasm.SectionTypes{
@@ -59,8 +57,8 @@ func ExampleVM_add() {
 			}
 			m.FunctionIndexSpace = []wasm.Function{
 				{
-					Sig:  &m.Types.Entries[0],
-					Host: reflect.ValueOf(print),
+					Sig: &m.Types.Entries[0],
+					//Host: reflect.ValueOf(print),
 					Body: &wasm.FunctionBody{}, // create a dummy wasm body (the actual value will be taken from Host.)
 				},
 			}
@@ -82,7 +80,7 @@ func ExampleVM_add() {
 		log.Fatalf("could not read module: %v", err)
 	}
 
-	vm, err := exec.NewVM(m)
+	vm, err := exec.NewVM(m, nil)
 	if err != nil {
 		log.Fatalf("could not create wagon vm: %v", err)
 	}

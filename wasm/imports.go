@@ -31,6 +31,10 @@ type ImportEntry struct {
 	Type Import
 }
 
+func (i ImportEntry) String() string {
+	return fmt.Sprintf("{Module:%s, Field:%s, Type:%s}", i.ModuleName, i.FieldName, i.Type.Kind().String())
+}
+
 type FuncImport struct {
 	Type uint32
 }
@@ -129,15 +133,15 @@ func (e InvalidImportError) Error() string {
 	return fmt.Sprintf("wasm: invalid signature for import %#x with name '%s' in module %s", e.TypeIndex, e.FieldName, e.ModuleName)
 }
 
-func (module *Module) resolveImports(resolve ResolveFunc) error {
-	if module.Import == nil {
+func (m *Module) resolveImports(resolve ResolveFunc) error {
+	if m.Import == nil {
 		return nil
 	}
 
 	modules := make(map[string]*Module)
 
 	var funcs uint32
-	for _, importEntry := range module.Import.Entries {
+	for _, importEntry := range m.Import.Entries {
 		importedModule, ok := modules[importEntry.ModuleName]
 		if !ok {
 			var err error
@@ -175,23 +179,27 @@ func (module *Module) resolveImports(resolve ResolveFunc) error {
 				return InvalidFunctionIndexError(index)
 			}
 
+			funcIndex := importEntry.Type.(FuncImport).Type // CAREFUL
+			fn.Sig = &m.Types.Entries[funcIndex]
+			fn.Body.Module = m
+
 			importIndex := importEntry.Type.(FuncImport).Type
-			if len(fn.Sig.ReturnTypes) != len(module.Types.Entries[importIndex].ReturnTypes) || len(fn.Sig.ParamTypes) != len(module.Types.Entries[importIndex].ParamTypes) {
+			if len(fn.Sig.ReturnTypes) != len(m.Types.Entries[importIndex].ReturnTypes) || len(fn.Sig.ParamTypes) != len(m.Types.Entries[importIndex].ParamTypes) {
 				return InvalidImportError{importEntry.ModuleName, importEntry.FieldName, importIndex}
 			}
 			for i, typ := range fn.Sig.ReturnTypes {
-				if typ != module.Types.Entries[importIndex].ReturnTypes[i] {
+				if typ != m.Types.Entries[importIndex].ReturnTypes[i] {
 					return InvalidImportError{importEntry.ModuleName, importEntry.FieldName, importIndex}
 				}
 			}
 			for i, typ := range fn.Sig.ParamTypes {
-				if typ != module.Types.Entries[importIndex].ParamTypes[i] {
+				if typ != m.Types.Entries[importIndex].ParamTypes[i] {
 					return InvalidImportError{importEntry.ModuleName, importEntry.FieldName, importIndex}
 				}
 			}
-			module.FunctionIndexSpace = append(module.FunctionIndexSpace, *fn)
-			module.Code.Bodies = append(module.Code.Bodies, *fn.Body)
-			module.imports.Funcs = append(module.imports.Funcs, funcs)
+			m.FunctionIndexSpace = append(m.FunctionIndexSpace, *fn)
+			m.Code.Bodies = append(m.Code.Bodies, *fn.Body)
+			m.imports.Funcs = append(m.imports.Funcs, funcs)
 			funcs++
 		case ExternalGlobal:
 			glb := importedModule.GetGlobal(int(index))
@@ -201,8 +209,8 @@ func (module *Module) resolveImports(resolve ResolveFunc) error {
 			if glb.Type.Mutable {
 				return ErrImportMutGlobal
 			}
-			module.GlobalIndexSpace = append(module.GlobalIndexSpace, *glb)
-			module.imports.Globals++
+			m.GlobalIndexSpace = append(m.GlobalIndexSpace, *glb)
+			m.imports.Globals++
 
 			// In both cases below, index should be always 0 (according to the MVP)
 			// We check it against the length of the index space anyway.
@@ -210,14 +218,14 @@ func (module *Module) resolveImports(resolve ResolveFunc) error {
 			if int(index) >= len(importedModule.TableIndexSpace) {
 				return InvalidTableIndexError(index)
 			}
-			module.TableIndexSpace[0] = importedModule.TableIndexSpace[0]
-			module.imports.Tables++
+			m.TableIndexSpace[0] = importedModule.TableIndexSpace[0]
+			m.imports.Tables++
 		case ExternalMemory:
 			if int(index) >= len(importedModule.LinearMemoryIndexSpace) {
 				return InvalidLinearMemoryIndexError(index)
 			}
-			module.LinearMemoryIndexSpace[0] = importedModule.LinearMemoryIndexSpace[0]
-			module.imports.Memories++
+			m.LinearMemoryIndexSpace[0] = importedModule.LinearMemoryIndexSpace[0]
+			m.imports.Memories++
 		default:
 			return InvalidExternalError(exportEntry.Kind)
 		}

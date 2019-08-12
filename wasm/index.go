@@ -68,6 +68,7 @@ func (m *Module) populateFunctions() error {
 	numImports := len(m.FunctionIndexSpace)
 	for codeIndex, typeIndex := range m.Function.Types {
 		if int(typeIndex) >= len(m.Types.Entries) {
+			logger.Printf("type_index=%d, types_entries=%d\n", typeIndex, len(m.Types.Entries))
 			return InvalidFunctionIndexError(typeIndex)
 		}
 
@@ -78,9 +79,11 @@ func (m *Module) populateFunctions() error {
 			Name: names[uint32(codeIndex+numImports)], // Add the name string if we have it
 		}
 
+		logger.Printf("populateFunctions add FunctionIndexSpace: type_index=%d, code_index=%d, sig=%s\n", typeIndex, codeIndex, fn.Sig.String())
 		m.FunctionIndexSpace = append(m.FunctionIndexSpace, fn)
 	}
 
+	logger.Printf("populateFunctons: import_funcs=%d, internal_funcs=%d\n", len(m.imports.Funcs), len(m.Function.Types))
 	funcs := make([]uint32, 0, len(m.Function.Types)+len(m.imports.Funcs))
 	funcs = append(funcs, m.imports.Funcs...)
 	funcs = append(funcs, m.Function.Types...)

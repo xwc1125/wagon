@@ -27,7 +27,8 @@ func verifyBody(fn *wasm.FunctionSig, body *wasm.FunctionBody, module *wasm.Modu
 		curFunc:     fn,
 	}
 
-	localVariables := []operand{}
+	//localVariables := []operand{}
+	localVariables := make([]operand, 0, len(fn.ParamTypes)+len(body.Locals))
 
 	// Parameters count as local variables too
 	// This comment explains how local variables work: https://github.com/WebAssembly/design/issues/1037#issuecomment-293505798
@@ -300,6 +301,12 @@ func verifyBody(fn *wasm.FunctionSig, body *wasm.FunctionBody, module *wasm.Modu
 			}
 
 			fnExpectSig := module.Types.Entries[index]
+
+			//reserved
+			_, err = vm.fetchVarUint()
+			if err != nil {
+				return vm, err
+			}
 
 			if operand, under := vm.popOperand(); !vm.isPolymorphic() && (under || operand.Type != wasm.ValueTypeI32) {
 				return vm, InvalidTypeError{wasm.ValueTypeI32, operand.Type}

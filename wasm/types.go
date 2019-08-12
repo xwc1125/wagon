@@ -197,6 +197,10 @@ type GlobalVar struct {
 	Mutable bool      // Whether the value of the variable can be changed by the set_global operator
 }
 
+func (g *GlobalVar) String() string {
+	return fmt.Sprintf("{Type: %s, Mutable: %v}", g.Type.String(), g.Mutable)
+}
+
 func (g *GlobalVar) UnmarshalWASM(r io.Reader) error {
 	*g = GlobalVar{}
 
@@ -236,6 +240,10 @@ type Table struct {
 	Limits      ResizableLimits
 }
 
+func (t Table) String() string {
+	return fmt.Sprintf("{ElemType: %s, Limits: %s}", t.ElementType.String(), t.Limits.String())
+}
+
 func (t *Table) UnmarshalWASM(r io.Reader) error {
 	err := t.ElementType.UnmarshalWASM(r)
 	if err != nil {
@@ -261,6 +269,10 @@ func (t *Table) MarshalWASM(w io.Writer) error {
 
 type Memory struct {
 	Limits ResizableLimits
+}
+
+func (m Memory) String() string {
+	return fmt.Sprintf("{Limits: %s}", m.Limits.String())
 }
 
 func (m *Memory) UnmarshalWASM(r io.Reader) error {
@@ -313,6 +325,10 @@ type ResizableLimits struct {
 	Flags   uint32 // 1 if the Maximum field is valid
 	Initial uint32 // initial length (in units of table elements or wasm pages)
 	Maximum uint32 // If flags is 1, it describes the maximum size of the table or memory
+}
+
+func (lim *ResizableLimits) String() string {
+	return fmt.Sprintf("{Flags:%d, Init:%d, Max:%d}", lim.Flags, lim.Initial, lim.Maximum)
 }
 
 func (lim *ResizableLimits) UnmarshalWASM(r io.Reader) error {

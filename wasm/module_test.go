@@ -8,10 +8,8 @@ import (
 	"bytes"
 	"io/ioutil"
 	"path/filepath"
-	"reflect"
 	"testing"
 
-	"github.com/go-interpreter/wagon/exec"
 	"github.com/go-interpreter/wagon/wasm"
 )
 
@@ -64,8 +62,8 @@ var moduleResolvers = map[string]wasm.ResolveFunc{
 		}
 		m.FunctionIndexSpace = []wasm.Function{
 			{
-				Sig:  &m.Types.Entries[0],
-				Host: reflect.ValueOf(func(p *exec.Process, a int64) {}),
+				Sig: &m.Types.Entries[0],
+				//Host: reflect.ValueOf(func(p *exec.Process, a int64) {}),
 				Body: &wasm.FunctionBody{},
 			},
 		}
@@ -96,8 +94,8 @@ var moduleResolvers = map[string]wasm.ResolveFunc{
 		}
 		m.FunctionIndexSpace = []wasm.Function{
 			{
-				Sig:  &m.Types.Entries[0],
-				Host: reflect.ValueOf(func(p *exec.Process, a int64, b int64) {}),
+				Sig: &m.Types.Entries[0],
+				//Host: reflect.ValueOf(func(p *exec.Process, a int64, b int64) {}),
 				Body: &wasm.FunctionBody{},
 			},
 		}
@@ -128,8 +126,8 @@ var moduleResolvers = map[string]wasm.ResolveFunc{
 		}
 		m.FunctionIndexSpace = []wasm.Function{
 			{
-				Sig:  &m.Types.Entries[0],
-				Host: reflect.ValueOf(func(p *exec.Process, a int64, b int64) {}),
+				Sig: &m.Types.Entries[0],
+				//Host: reflect.ValueOf(func(p *exec.Process, a int64, b int64) {}),
 				Body: &wasm.FunctionBody{},
 			},
 		}

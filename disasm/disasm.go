@@ -134,7 +134,7 @@ func NewDisassembly(fn wasm.Function, module *wasm.Module) (*Disassembly, error)
 			top := int(stackDepths.Top())
 			top -= len(opStr.Args)
 			stackDepths.SetTop(uint64(top))
-			if top < -1 {
+			if top < 0 {
 				return nil, ErrStackUnderflow
 			}
 			if opStr.Returns != wasm.ValueType(wasm.BlockTypeEmpty) {
@@ -172,10 +172,11 @@ func NewDisassembly(fn wasm.Function, module *wasm.Module) (*Disassembly, error)
 			}
 			if op == ops.End {
 				instr.Block.BlockStartIndex = int(blockStartIndex)
+				//disas.Code[blockStartIndex].Block.IfElseIndex = int(blockStartIndex)
 				disas.Code[blockStartIndex].Block.EndIndex = curIndex
 			} else { // ops.Else
 				instr.Block.ElseIfIndex = int(blockStartIndex)
-				disas.Code[blockStartIndex].Block.IfElseIndex = int(blockStartIndex)
+				disas.Code[blockStartIndex].Block.IfElseIndex = int(curIndex)
 			}
 
 			// The max depth reached while execing the last block
@@ -194,7 +195,7 @@ func NewDisassembly(fn wasm.Function, module *wasm.Module) (*Disassembly, error)
 
 			if !lastOpReturn {
 				elemsDiscard := int(curDepth) - int(prevDepth)
-				if elemsDiscard < -1 {
+				if elemsDiscard < 0 {
 					return nil, ErrStackUnderflow
 				}
 				instr.NewStack = &StackInfo{
@@ -214,7 +215,8 @@ func NewDisassembly(fn wasm.Function, module *wasm.Module) (*Disassembly, error)
 
 			stackDepths.Pop()
 			if op == ops.Else {
-				stackDepths.Push(stackDepths.Top())
+				//stackDepths.Push(stackDepths.Top())
+				stackDepths.Push(prevDepth)
 				blockIndices.Push(uint64(curIndex))
 				if !instr.Unreachable {
 					blockPolymorphicOps = append(blockPolymorphicOps, []int{})
@@ -360,10 +362,8 @@ func NewDisassembly(fn wasm.Function, module *wasm.Module) (*Disassembly, error)
 		curIndex++
 	}
 
-	if logging {
-		for _, instr := range disas.Code {
-			logger.Printf("%v %v", instr.Op.Name, instr.NewStack)
-		}
+	for _, instr := range disas.Code {
+		logger.Printf("%v %v", instr.Op.Name, instr.NewStack)
 	}
 
 	return disas, nil

@@ -4,6 +4,27 @@
 
 package disasm
 
+type Logger interface {
+	Printf(string, ...interface{})
+	Println(string, ...interface{})
+}
+
+var logger Logger
+
+func init() {
+	logger = NoopLogger{}
+}
+
+func SetLogger(l Logger) {
+	logger = l
+}
+
+type NoopLogger struct{}
+
+func (l NoopLogger) Printf(fmt string, v ...interface{})  {}
+func (l NoopLogger) Println(fmt string, v ...interface{}) {}
+
+/*
 import (
 	"io/ioutil"
 	"log"
@@ -31,3 +52,4 @@ func SetDebugMode(l bool) {
 func init() {
 	SetDebugMode(false)
 }
+*/

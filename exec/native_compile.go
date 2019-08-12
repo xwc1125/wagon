@@ -156,7 +156,8 @@ func (vm *VM) tryNativeCompile() error {
 // [fp+pointerSize:fp+pointerSize*2]: sliceHeader for locals variables.
 func (vm *VM) nativeCodeInvocation(asmIndex uint32) {
 	block := vm.ctx.asm[asmIndex]
-	finishSignal := block.nativeUnit.Invoke(&vm.ctx.stack, &vm.ctx.locals, &vm.globals, &vm.memory)
+	//finishSignal := block.nativeUnit.Invoke(&vm.ctx.stack, &vm.ctx.locals, &vm.globals, &vm.memory)
+	finishSignal := block.nativeUnit.Invoke(&vm.ctx.stack, &vm.ctx.locals, &vm.globals, &vm.mem.Memory)
 
 	switch finishSignal.CompletionStatus() {
 	case compile.CompletionOK:

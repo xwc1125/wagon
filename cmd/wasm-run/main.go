@@ -20,7 +20,7 @@ func main() {
 	log.SetPrefix("wasm-run: ")
 	log.SetFlags(0)
 
-	verbose := flag.Bool("v", false, "enable/disable verbose mode")
+	//verbose := flag.Bool("v", false, "enable/disable verbose mode")
 	verify := flag.Bool("verify-module", false, "run module verification")
 
 	flag.Parse()
@@ -30,7 +30,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	wasm.SetDebugMode(*verbose)
+	//wasm.SetDebugMode(*verbose)
 
 	run(os.Stdout, flag.Arg(0), *verify)
 }
@@ -58,7 +58,7 @@ func run(w io.Writer, fname string, verify bool) {
 		log.Fatalf("module has no export section")
 	}
 
-	vm, err := exec.NewVM(m)
+	vm, err := exec.NewVM(m, nil)
 	if err != nil {
 		log.Fatalf("could not create VM: %v", err)
 	}

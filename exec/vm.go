@@ -6,6 +6,7 @@
 package exec
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/go-interpreter/wagon/disasm"
 	"github.com/go-interpreter/wagon/exec/internal/compile"
+	"github.com/go-interpreter/wagon/memory"
 	"github.com/go-interpreter/wagon/wasm"
 	ops "github.com/go-interpreter/wagon/wasm/operators"
 )
@@ -43,6 +45,13 @@ func (e InvalidFunctionIndexError) Error() string {
 	return fmt.Sprintf("Invalid index to function index space: %d", int64(e))
 }
 
+type Backend interface {
+	IsTracing() bool
+	Trace(fmt string, v ...interface{})
+	UseGas(gas uint64) bool
+	Caller() []byte
+}
+
 type context struct {
 	stack   []uint64
 	locals  []uint64
@@ -58,10 +67,14 @@ type VM struct {
 
 	module  *wasm.Module
 	globals []uint64
-	memory  []byte
 	funcs   []function
+	//memory  []byte
+	mem *memory.MemManager
 
 	funcTable [256]func()
+	opSet     []operation
+
+	ops Backend
 
 	// RecoverPanic controls whether the `ExecCode` method
 	// recovers from a panic and returns it as an error
@@ -75,8 +88,42 @@ type VM struct {
 	nativeBackend *nativeCompiler
 }
 
+func CeateVMemory(module *wasm.Module) (*memory.MemManager, error) {
+	exportEntry, ok := module.Export.Entries["__heap_base"]
+	if !ok {
+		return nil, errors.New("invalid memory no __heap_base")
+	}
+	if exportEntry.Kind != wasm.ExternalGlobal {
+		return nil, errors.New("invalid type of __heap_base")
+	}
+	globalEntry := module.GetGlobal(int(exportEntry.Index))
+	valTmp, err := module.ExecInitExpr(globalEntry.Init)
+	if err != nil {
+		return nil, err
+	}
+	val, ok := valTmp.(int32)
+	if !ok {
+		return nil, errors.New("invalid global init expression")
+	}
+	heapBase := int(val)
+	initMemSize := int(module.Memory.Entries[0].Limits.Initial) * wasmPageSize
+	memManager, err := memory.InitMemManager(heapBase, initMemSize, 0)
+	if err != nil {
+		return nil, err
+	}
+	if module.LinearMemoryIndexSpace[0] != nil {
+		memManager.CopyDataSection(module.LinearMemoryIndexSpace[0][wasmFixedStackSize:])
+	}
+	return memManager, nil
+}
+
+func (vm *VM) VMemory() *memory.MemManager {
+	return vm.mem
+}
+
 // As per the WebAssembly spec: https://github.com/WebAssembly/design/blob/27ac254c854994103c24834a994be16f74f54186/Semantics.md#linear-memory
 const wasmPageSize = 65536 // (64 KB)
+const wasmFixedStackSize = 16 * 1024
 
 var endianess = binary.LittleEndian
 
@@ -98,25 +145,36 @@ func EnableAOT(v bool) VMOption {
 
 // NewVM creates a new VM from a given module and options. If the module defines
 // a start function, it will be executed.
-func NewVM(module *wasm.Module, opts ...VMOption) (*VM, error) {
-	var vm VM
+func NewVM(module *wasm.Module, ops Backend, opts ...VMOption) (*VM, error) { // CAREFUL
 	var options config
 	for _, opt := range opts {
 		opt(&options)
 	}
 
-	if module.Memory != nil && len(module.Memory.Entries) != 0 {
-		if len(module.Memory.Entries) > 1 {
-			return nil, ErrMultipleLinearMemories
-		}
-		vm.memory = make([]byte, uint(module.Memory.Entries[0].Limits.Initial)*wasmPageSize)
-		copy(vm.memory, module.LinearMemoryIndexSpace[0])
+	vmem, err := CeateVMemory(module)
+	if err != nil {
+		return nil, err
 	}
+
+	vm := VM{
+		mem:          vmem,
+		ops:          ops,
+		RecoverPanic: true,
+	}
+
+	//if module.Memory != nil && len(module.Memory.Entries) != 0 {
+	//	if len(module.Memory.Entries) > 1 {
+	//		return nil, ErrMultipleLinearMemories
+	//	}
+	//	vm.memory = make([]byte, uint(module.Memory.Entries[0].Limits.Initial)*wasmPageSize)
+	//	copy(vm.memory, module.LinearMemoryIndexSpace[0])
+	//}
 
 	vm.funcs = make([]function, len(module.FunctionIndexSpace))
 	vm.globals = make([]uint64, len(module.GlobalIndexSpace))
-	vm.newFuncTable()
+	//vm.newFuncTable()
 	vm.module = module
+	vm.opSet = opSet[0:256]
 
 	nNatives := 0
 	for i, fn := range module.FunctionIndexSpace {
@@ -127,10 +185,11 @@ func NewVM(module *wasm.Module, opts ...VMOption) (*VM, error) {
 		// section of:
 		// https://webassembly.github.io/spec/core/exec/modules.html#allocation
 		if fn.IsHost() {
-			vm.funcs[i] = goFunction{
-				typ: fn.Host.Type(),
-				val: fn.Host,
-			}
+			vm.funcs[i] = goFunction{}
+			//vm.funcs[i] = goFunction{
+			//	typ: fn.Host.Type(),
+			//	val: fn.Host,
+			//}
 			nNatives++
 			continue
 		}
@@ -168,17 +227,62 @@ func NewVM(module *wasm.Module, opts ...VMOption) (*VM, error) {
 		}
 	}
 
-	if options.EnableAOT {
-		supportedBackend, backend := nativeBackend()
-		if supportedBackend {
-			vm.nativeBackend = backend
-			if err := vm.tryNativeCompile(); err != nil {
-				return nil, err
-			}
+	//if options.EnableAOT {
+	//	supportedBackend, backend := nativeBackend()
+	//	if supportedBackend {
+	//		vm.nativeBackend = backend
+	//		if err := vm.tryNativeCompile(); err != nil {
+	//			return nil, err
+	//		}
+	//	}
+	//}
+
+	return &vm, nil
+}
+
+// Clone just copy
+func (vm *VM) Clone(ops Backend) *VM {
+	module := vm.module
+	vmem, err := CeateVMemory(module)
+	if err != nil {
+		panic(fmt.Errorf("CreateVMemory fail: %s", err))
+	}
+
+	newVM := VM{
+		mem:          vmem,
+		ops:          ops,
+		module:       vm.module,
+		globals:      make([]uint64, len(module.GlobalIndexSpace)),
+		funcs:        vm.funcs,
+		RecoverPanic: vm.RecoverPanic,
+	}
+
+	newVM.opSet = opSet[0:256]
+
+	for i, global := range module.GlobalIndexSpace {
+		val, err := module.ExecInitExpr(global.Init)
+		if err != nil {
+			panic(fmt.Sprintf("module.ExecInitExpr fail: %s", err))
+		}
+		switch v := val.(type) {
+		case int32:
+			newVM.globals[i] = uint64(v)
+		case int64:
+			newVM.globals[i] = uint64(v)
+		case float32:
+			newVM.globals[i] = uint64(math.Float32bits(v))
+		case float64:
+			newVM.globals[i] = uint64(math.Float64bits(v))
 		}
 	}
 
-	return &vm, nil
+	if module.Start != nil {
+		_, err := newVM.ExecCode(int64(module.Start.Index))
+		if err != nil {
+			panic("Exec Start fail")
+		}
+	}
+	return &newVM
 }
 
 func (vm *VM) resetGlobals() error {
@@ -204,7 +308,8 @@ func (vm *VM) resetGlobals() error {
 
 // Memory returns the linear memory space for the VM.
 func (vm *VM) Memory() []byte {
-	return vm.memory
+	//return vm.memory
+	return vm.mem.Memory
 }
 
 func (vm *VM) pushBool(v bool) {
@@ -308,6 +413,34 @@ func (vm *VM) pushFloat32(f float32) {
 	vm.pushUint32(math.Float32bits(f))
 }
 
+func (vm *VM) prefetchInt8() int8 {
+	return int8(vm.ctx.code[vm.ctx.pc])
+}
+
+func (vm *VM) prefetchUint32() uint32 {
+	return endianess.Uint32(vm.ctx.code[vm.ctx.pc:])
+}
+
+func (vm *VM) prefetchInt32() int32 {
+	return int32(vm.prefetchUint32())
+}
+
+func (vm *VM) prefetchUint64() uint64 {
+	return endianess.Uint64(vm.ctx.code[vm.ctx.pc:])
+}
+
+func (vm *VM) prefetchInt64() int64 {
+	return int64(vm.prefetchUint64())
+}
+
+func (vm *VM) backUint64(n int) uint64 {
+	return vm.ctx.stack[len(vm.ctx.stack)-1-n]
+}
+
+func (vm *VM) stackLen() int {
+	return len(vm.ctx.stack)
+}
+
 // ExecCode calls the function with the given index and arguments.
 // fnIndex should be a valid index into the function index space of
 // the VM's module.
@@ -374,24 +507,100 @@ func (vm *VM) ExecCode(fnIndex int64, args ...uint64) (rtrn interface{}, err err
 	return rtrn, nil
 }
 
+// PreRun prepare to run
+func (vm *VM) PreRun(fnIndex int64, args ...uint64) error {
+	if int(fnIndex) > len(vm.funcs) {
+		return InvalidFunctionIndexError(fnIndex)
+	}
+	if len(vm.module.GetFunction(int(fnIndex)).Sig.ParamTypes) != len(args) {
+		return ErrInvalidArgumentCount
+	}
+	compiled, ok := vm.funcs[fnIndex].(compiledFunction)
+	if !ok {
+		return fmt.Errorf("exec: function at index %d is not a compiled function", fnIndex)
+	}
+	if len(vm.ctx.stack) < compiled.maxDepth {
+		vm.ctx.stack = make([]uint64, 0, compiled.maxDepth)
+	}
+	vm.ctx.locals = make([]uint64, compiled.totalLocalVars)
+	vm.ctx.pc = 0
+	vm.ctx.code = compiled.code
+	vm.ctx.curFunc = fnIndex
+
+	for i, arg := range args {
+		vm.ctx.locals[i] = arg
+	}
+
+	return nil
+}
+
+// Run execute code.
+func (vm *VM) Run() (rtrn interface{}, err error) {
+	if vm.RecoverPanic {
+		defer func() {
+			if r := recover(); r != nil {
+				switch e := r.(type) {
+				case error:
+					err = e
+				default:
+					err = fmt.Errorf("exec: %v", e)
+				}
+			}
+		}()
+	}
+
+	fnIndex := vm.ctx.curFunc
+	compiled := vm.funcs[fnIndex].(compiledFunction)
+	res := vm.execCode(compiled)
+	vm.mem.Release()
+
+	if compiled.returns {
+		rtrnType := vm.module.GetFunction(int(fnIndex)).Sig.ReturnTypes[0]
+		switch rtrnType {
+		case wasm.ValueTypeI32:
+			rtrn = uint32(res)
+		case wasm.ValueTypeI64:
+			rtrn = uint64(res)
+		case wasm.ValueTypeF32:
+			rtrn = math.Float32frombits(uint32(res))
+		case wasm.ValueTypeF64:
+			rtrn = math.Float64frombits(res)
+		default:
+			return nil, InvalidReturnTypeError(rtrnType)
+		}
+	}
+
+	return rtrn, err
+}
+
 func (vm *VM) execCode(compiled compiledFunction) uint64 {
 outer:
 	for int(vm.ctx.pc) < len(vm.ctx.code) && !vm.abort {
+		vm.trace()
 		op := vm.ctx.code[vm.ctx.pc]
 		vm.ctx.pc++
 		switch op {
 		case ops.Return:
 			break outer
 		case compile.OpJmp:
+			if !vm.ops.UseGas(GasQuickStep) {
+				panic("[vm] execCode: OutOfGas")
+			}
 			vm.ctx.pc = vm.fetchInt64()
 			continue
 		case compile.OpJmpZ:
+			if !vm.ops.UseGas(GasQuickStep) {
+				panic("[vm] execCode: OutOfGas")
+			}
 			target := vm.fetchInt64()
 			if vm.popUint32() == 0 {
 				vm.ctx.pc = target
 				continue
 			}
 		case compile.OpJmpNz:
+			if !vm.ops.UseGas(GasQuickStep) {
+				panic("[vm] execCode: OutOfGas")
+			}
 			target := vm.fetchInt64()
 			preserveTop := vm.fetchBool()
 			discard := vm.fetchInt64()
@@ -408,6 +617,9 @@ outer:
 				continue
 			}
 		case ops.BrTable:
+			if !vm.ops.UseGas(GasQuickStep) {
+				panic("[vm] execCode: OutOfGas")
+			}
 			index := vm.fetchInt64()
 			label := vm.popInt32()
 			cf, ok := vm.funcs[vm.ctx.curFunc].(compiledFunction)
@@ -436,19 +648,44 @@ outer:
 			}
 			continue
 		case compile.OpDiscard:
+			if !vm.ops.UseGas(GasQuickStep) {
+				panic("[vm] execCode: OutOfGas")
+			}
 			place := vm.fetchInt64()
 			vm.ctx.stack = vm.ctx.stack[:len(vm.ctx.stack)-int(place)]
 		case compile.OpDiscardPreserveTop:
+			if !vm.ops.UseGas(GasQuickStep) {
+				panic("[vm] execCode: OutOfGas")
+			}
 			top := vm.ctx.stack[len(vm.ctx.stack)-1]
 			place := vm.fetchInt64()
 			vm.ctx.stack = vm.ctx.stack[:len(vm.ctx.stack)-int(place)]
 			vm.pushUint64(top)
 
 		case ops.WagonNativeExec:
+			if !vm.ops.UseGas(GasQuickStep) {
+				panic("[vm] execCode: OutOfGas")
+			}
 			i := vm.fetchUint32()
 			vm.nativeCodeInvocation(i)
 		default:
-			vm.funcTable[op]()
+			//vm.funcTable[op]()
+			operation := vm.opSet[op]
+			if operation.gasCost == nil || operation.execute == nil {
+				panic(fmt.Sprintf("[vm] operation(%s) Forbiden!!", ops.OpSignature(op)))
+			}
+
+			cost, err := operation.gasCost(vm)
+			if err != nil {
+				panic(fmt.Sprintf("[vm] execCode: calc gas fail: %s", err))
+			}
+			if !vm.ops.UseGas(cost) {
+				panic("[vm] execCode: OutOfGas")
+			}
+			if vm.ops.IsTracing() {
+				vm.ops.Trace(fmt.Sprintf("debug op:%d, name:%s, gas:%d\n", op, ops.OpSignature(op), cost))
+			}
+			operation.execute(vm)
 		}
 	}
 
@@ -474,6 +711,20 @@ func (vm *VM) Close() error {
 		}
 	}
 	return nil
+}
+
+func (vm *VM) trace() {
+	if vm.ops.IsTracing() {
+		op := vm.ctx.code[vm.ctx.pc]
+		buf := bytes.NewBuffer(nil)
+		buf.WriteString(fmt.Sprintf("pc:%d, op:%s\n", vm.ctx.pc, ops.OpSignature(op)))
+		buf.WriteString(fmt.Sprintf("stack: len=%d, vals=%v\n", len(vm.ctx.stack), vm.ctx.stack))
+		//buf.WriteString((fmt.Sprintf("mem: %s\n", vm.VMemory().String())))
+		vm.ops.Trace(buf.String())
+		//vm.ops.Trace(fmt.Sprintf("pc:%d, op:%s", vm.ctx.pc, ops.OpSignature(op)))
+		//vm.ops.Trace(fmt.Sprintf("stack: len=%d, vals=%v", len(vm.ctx.stack), vm.ctx.stack))
+		//vm.ops.Trace(fmt.Sprintf("mem: %s", vm.VMemory().String()))
+	}
 }
 
 // Process is a proxy passed to host functions in order to access

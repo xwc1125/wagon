@@ -6,14 +6,13 @@ package exec
 
 import (
 	"fmt"
-	"math"
-	"reflect"
 
 	"github.com/go-interpreter/wagon/exec/internal/compile"
 )
 
 type function interface {
 	call(vm *VM, index int64)
+	gas(vm *VM, index int64) (uint64, error)
 }
 
 type compiledFunction struct {
@@ -25,7 +24,7 @@ type compiledFunction struct {
 	args           int  // number of arguments the function accepts
 	returns        bool // whether the function returns a value
 
-	asm []asmBlock
+	asm []asmBlock // CAREFUL
 }
 
 type asmBlock struct {
@@ -36,10 +35,61 @@ type asmBlock struct {
 }
 
 type goFunction struct {
-	val reflect.Value
-	typ reflect.Type
+	//val reflect.Value
+	//typ reflect.Type
+
+	//fn func(index int64, ops interface{}, args []uint64) (uint64, error)
 }
 
+func (gfn goFunction) gas(vm *VM, index int64) (uint64, error) {
+	sig := vm.module.FunctionIndexSpace[index].Sig
+	if vm.stackLen() < len(sig.ParamTypes) {
+		vm.abort = true
+		panic(fmt.Sprintf("stack_len(%d) < args_len(%d)", vm.stackLen(), len(sig.ParamTypes)))
+	}
+	args := make([]uint64, len(sig.ParamTypes))
+	for i := 0; i < len(sig.ParamTypes); i++ {
+		args[len(sig.ParamTypes)-1-i] = vm.backUint64(i)
+	}
+	vm.ops.Trace("host function gas", "index", index, "args", args)
+	hostFn := vm.module.FunctionIndexSpace[index].Host
+	return hostFn.Gas(index, vm.ops, args)
+}
+
+func (gfn goFunction) call(vm *VM, index int64) {
+	sig := vm.module.FunctionIndexSpace[index].Sig
+
+	if vm.stackLen() < len(sig.ParamTypes) {
+		vm.abort = true
+		panic(fmt.Sprintf("stack_len(%d) < args_len(%d)", vm.stackLen(), len(sig.ParamTypes)))
+	}
+	args := make([]uint64, len(sig.ParamTypes))
+
+	//for i := 0; i < len(sig.ParamTypes); i++ {
+	//	args[i] = vm.popUint64()
+	//}
+	for i := len(sig.ParamTypes) - 1; i >= 0; i-- {
+		args[i] = vm.popUint64()
+	}
+
+	vm.ops.Trace("host function call begin", "index", index, "args", args, "returns", len(sig.ReturnTypes))
+	hostFn := vm.module.FunctionIndexSpace[index].Host
+	ret, err := hostFn.Call(index, vm.ops, args)
+	if err != nil {
+		// TODO: error handling, terminate VM execution
+		vm.abort = true
+		// panic(fmt.Sprintf("goFunction call fail: %s", err))
+		panic(err)
+	}
+
+	//tcExit terminate the program and need to return a value
+	if len(sig.ReturnTypes) > 0 || vm.abort {
+		vm.pushUint64(ret)
+	}
+	vm.ops.Trace("host function call end", "index", index, "ret", ret)
+}
+
+/*
 func (fn goFunction) call(vm *VM, index int64) {
 	// numIn = # of call inputs + vm, as the function expects
 	// an additional *VM argument
@@ -87,6 +137,11 @@ func (fn goFunction) call(vm *VM, index int64) {
 			panic(fmt.Sprintf("exec: return value %d invalid kind=%v", i, kind))
 		}
 	}
+}
+*/
+
+func (compiled compiledFunction) gas(vm *VM, index int64) (uint64, error) {
+	return 0, nil
 }
 
 func (compiled compiledFunction) call(vm *VM, index int64) {

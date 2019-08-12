@@ -114,9 +114,9 @@ func newSectionsReader(m *Module) *sectionsReader {
 	return &sectionsReader{m: m}
 }
 
-func (s *sectionsReader) readSections(r *readpos.ReadPos) error {
+func (sr *sectionsReader) readSections(r *readpos.ReadPos) error {
 	for {
-		done, err := s.readSection(r)
+		done, err := sr.readSection(r)
 		switch {
 		case err != nil:
 			return err
@@ -219,7 +219,8 @@ func (sr *sectionsReader) readSection(r *readpos.ReadPos) (bool, error) {
 	}
 	err = sec.ReadPayload(sectionReader)
 	if err != nil {
-		logger.Println(err)
+		//logger.Println(err)
+		logger.Println(err.Error())
 		return false, err
 	}
 	s.End = r.CurPos
@@ -287,6 +288,14 @@ type SectionTypes struct {
 	Entries []FunctionSig
 }
 
+func (s *SectionTypes) String() string {
+	if s == nil {
+		return "nil"
+	}
+	buf := bytes.NewBufferString(fmt.Sprintf("%v", s.Entries))
+	return buf.String()
+}
+
 func (*SectionTypes) SectionID() SectionID {
 	return SectionIDType
 }
@@ -327,6 +336,14 @@ var _ Section = (*SectionImports)(nil)
 type SectionImports struct {
 	RawSection
 	Entries []ImportEntry
+}
+
+func (s *SectionImports) String() string {
+	if s == nil {
+		return "nil"
+	}
+	buf := bytes.NewBufferString(fmt.Sprintf("%v", s.Entries))
+	return buf.String()
 }
 
 func (*SectionImports) SectionID() SectionID {
@@ -437,6 +454,15 @@ type SectionFunctions struct {
 	Types []uint32
 }
 
+func (s *SectionFunctions) String() string {
+	if s == nil {
+		return "nil"
+	}
+	buf := bytes.NewBufferString("")
+	buf.WriteString(fmt.Sprintf("%v", s.Types))
+	return buf.String()
+}
+
 func (*SectionFunctions) SectionID() SectionID {
 	return SectionIDFunction
 }
@@ -473,6 +499,16 @@ func (s *SectionFunctions) WritePayload(w io.Writer) error {
 type SectionTables struct {
 	RawSection
 	Entries []Table
+}
+
+func (s *SectionTables) String() string {
+	if s == nil {
+		return "nil"
+	}
+
+	buf := bytes.NewBufferString("")
+	buf.WriteString(fmt.Sprintf("%v", s.Entries))
+	return buf.String()
 }
 
 func (*SectionTables) SectionID() SectionID {
@@ -514,6 +550,15 @@ type SectionMemories struct {
 	Entries []Memory
 }
 
+func (s *SectionMemories) String() string {
+	if s == nil {
+		return "nil"
+	}
+	buf := bytes.NewBufferString("")
+	buf.WriteString(fmt.Sprintf("%v", s.Entries))
+	return buf.String()
+}
+
 func (*SectionMemories) SectionID() SectionID {
 	return SectionIDMemory
 }
@@ -550,6 +595,15 @@ func (s *SectionMemories) WritePayload(w io.Writer) error {
 type SectionGlobals struct {
 	RawSection
 	Globals []GlobalEntry
+}
+
+func (s *SectionGlobals) String() string {
+	if s == nil {
+		return "nil"
+	}
+	buf := bytes.NewBufferString("")
+	buf.WriteString(fmt.Sprintf("%v", s.Globals))
+	return buf.String()
 }
 
 func (*SectionGlobals) SectionID() SectionID {
@@ -592,6 +646,10 @@ type GlobalEntry struct {
 	Init []byte    // Init is an initializer expression that computes the initial value of the variable
 }
 
+func (g GlobalEntry) String() string {
+	return fmt.Sprintf("{Type: %s, Init:%v}", g.Type.String(), g.Init)
+}
+
 func (g *GlobalEntry) UnmarshalWASM(r io.Reader) error {
 	err := g.Type.UnmarshalWASM(r)
 	if err != nil {
@@ -616,6 +674,18 @@ type SectionExports struct {
 	RawSection
 	Entries map[string]ExportEntry
 	Names   []string
+}
+
+func (s *SectionExports) String() string {
+	if s == nil {
+		return "nil"
+	}
+	buf := bytes.NewBufferString("{\n")
+	for k, e := range s.Entries {
+		buf.WriteString(fmt.Sprintf("%s: %s\n", k, e.String()))
+	}
+	buf.WriteString("}")
+	return buf.String()
 }
 
 func (*SectionExports) SectionID() SectionID {
@@ -682,6 +752,10 @@ type ExportEntry struct {
 	Index    uint32
 }
 
+func (e *ExportEntry) String() string {
+	return fmt.Sprintf("{Field:%s, Kind:%s, Index:%d}", e.FieldStr, e.Kind.String(), e.Index)
+}
+
 func (e *ExportEntry) UnmarshalWASM(r io.Reader) error {
 	var err error
 	e.FieldStr, err = readStringUint(r)
@@ -717,6 +791,13 @@ type SectionStartFunction struct {
 	Index uint32 // The index of the start function into the global index space.
 }
 
+func (s *SectionStartFunction) String() string {
+	if s == nil {
+		return "nil"
+	}
+	return fmt.Sprintf("{Index: %d}", s.Index)
+}
+
 func (*SectionStartFunction) SectionID() SectionID {
 	return SectionIDStart
 }
@@ -736,6 +817,15 @@ func (s *SectionStartFunction) WritePayload(w io.Writer) error {
 type SectionElements struct {
 	RawSection
 	Entries []ElementSegment
+}
+
+func (s *SectionElements) String() string {
+	if s == nil {
+		return "nil"
+	}
+	buf := bytes.NewBufferString("")
+	buf.WriteString(fmt.Sprintf("%v", s.Entries))
+	return buf.String()
 }
 
 func (*SectionElements) SectionID() SectionID {
@@ -776,6 +866,10 @@ type ElementSegment struct {
 	Index  uint32 // The index into the global table space, should always be 0 in the MVP.
 	Offset []byte // initializer expression for computing the offset for placing elements, should return an i32 value
 	Elems  []uint32
+}
+
+func (s ElementSegment) String() string {
+	return fmt.Sprintf("{Index:%d, Offset:%v, Elems:%v}", s.Index, s.Offset, s.Elems)
 }
 
 func (s *ElementSegment) UnmarshalWASM(r io.Reader) error {
@@ -829,6 +923,18 @@ type SectionCode struct {
 	Bodies []FunctionBody
 }
 
+func (s SectionCode) String() string {
+	// NOTE: Can not print directly, Be careful recursive nesting
+	//fmt.Sprintf("Bodies: %v", s.Bodies)
+
+	buf := bytes.NewBufferString("{Bodies:[")
+	for _, b := range s.Bodies {
+		buf.WriteString(fmt.Sprintf("%s,", b.String()))
+	}
+	buf.WriteString("]}")
+	return buf.String()
+}
+
 func (*SectionCode) SectionID() SectionID {
 	return SectionIDCode
 }
@@ -870,6 +976,10 @@ type FunctionBody struct {
 	Module *Module // The parent module containing this function body, for execution purposes
 	Locals []LocalEntry
 	Code   []byte
+}
+
+func (f FunctionBody) String() string {
+	return fmt.Sprintf("{Locals: %v}", f.Locals)
 }
 
 func (f *FunctionBody) UnmarshalWASM(r io.Reader) error {
@@ -936,6 +1046,10 @@ type LocalEntry struct {
 	Type  ValueType // The type of value stored by the variable
 }
 
+func (l LocalEntry) String() string {
+	return fmt.Sprintf("{Count:%d, Type:%s}", l.Count, l.Type.String())
+}
+
 func (l *LocalEntry) UnmarshalWASM(r io.Reader) error {
 	var err error
 
@@ -966,6 +1080,13 @@ func (l *LocalEntry) MarshalWASM(w io.Writer) error {
 type SectionData struct {
 	RawSection
 	Entries []DataSegment
+}
+
+func (s *SectionData) String() string {
+	if s == nil {
+		return "nil"
+	}
+	return fmt.Sprintf("%v", s.Entries)
 }
 
 func (*SectionData) SectionID() SectionID {
@@ -1005,6 +1126,10 @@ type DataSegment struct {
 	Index  uint32 // The index into the global linear memory space, should always be 0 in the MVP.
 	Offset []byte // initializer expression for computing the offset for placing elements, should return an i32 value
 	Data   []byte
+}
+
+func (s DataSegment) String() string {
+	return fmt.Sprintf("{Index:%d, Offset:%v, Data:%v}", s.Index, s.Offset, s.Data)
 }
 
 func (s *DataSegment) UnmarshalWASM(r io.Reader) error {

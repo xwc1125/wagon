@@ -6,7 +6,6 @@ package exec
 
 import (
 	"bytes"
-	"reflect"
 	"testing"
 
 	"github.com/go-interpreter/wagon/wasm"
@@ -18,9 +17,9 @@ func TestHostCall(t *testing.T) {
 	var secretVariable int
 
 	// a host function that can be called by WASM code.
-	testHostFunction := func(proc *Process) {
-		secretVariable = secretValue
-	}
+	//testHostFunction := func(proc *Process) {
+	//	secretVariable = secretValue
+	//}
 
 	m := wasm.NewModule()
 	m.Start = &wasm.SectionStartFunction{Index: 0}
@@ -63,8 +62,8 @@ func TestHostCall(t *testing.T) {
 			Body: &fb,
 		},
 		{
-			Sig:  &fsig,
-			Host: reflect.ValueOf(testHostFunction),
+			Sig: &fsig,
+			//Host: reflect.ValueOf(testHostFunction),
 		},
 	}
 
@@ -74,7 +73,7 @@ func TestHostCall(t *testing.T) {
 
 	// Once called, NewVM will execute the module's main
 	// function.
-	vm, err := NewVM(m)
+	vm, err := NewVM(m, nil)
 	if err != nil {
 		t.Fatalf("Error creating VM: %v", vm)
 	}
@@ -118,8 +117,8 @@ func importer(name string, f func(*Process, int32) int32) (*wasm.Module, error) 
 	}
 	m.FunctionIndexSpace = []wasm.Function{
 		{
-			Sig:  &m.Types.Entries[0],
-			Host: reflect.ValueOf(f),
+			Sig: &m.Types.Entries[0],
+			//Host: reflect.ValueOf(f),
 			Body: &wasm.FunctionBody{},
 		},
 	}
@@ -155,8 +154,8 @@ func invalidImporter(name string) (*wasm.Module, error) {
 	}
 	m.FunctionIndexSpace = []wasm.Function{
 		{
-			Sig:  &m.Types.Entries[0],
-			Host: reflect.ValueOf(invalidAdd3),
+			Sig: &m.Types.Entries[0],
+			//Host: reflect.ValueOf(invalidAdd3),
 			Body: &wasm.FunctionBody{},
 		},
 	}
@@ -178,7 +177,7 @@ func TestHostSymbolCall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not read module: %v", err)
 	}
-	vm, err := NewVM(m)
+	vm, err := NewVM(m, nil)
 	if err != nil {
 		t.Fatalf("Could not instantiate vm: %v", err)
 	}
@@ -205,7 +204,7 @@ func TestGoFunctionCallChecksForFirstArgument(t *testing.T) {
 			}
 		}
 	}()
-	vm, err := NewVM(m)
+	vm, err := NewVM(m, nil)
 	if err != nil {
 		t.Fatalf("Could not instantiate vm: %v", err)
 	}
@@ -225,7 +224,7 @@ func TestHostTerminate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not read module: %v", err)
 	}
-	vm, err := NewVM(m)
+	vm, err := NewVM(m, nil)
 	if err != nil {
 		t.Fatalf("Could not instantiate vm: %v", err)
 	}

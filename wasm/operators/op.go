@@ -7,6 +7,7 @@
 package operators
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/go-interpreter/wagon/wasm"
@@ -32,6 +33,27 @@ type Op struct {
 
 func (o Op) IsValid() bool {
 	return o.Name != ""
+}
+
+func (o Op) String() string {
+	buf := bytes.NewBuffer(nil)
+	if o.Returns == noReturn {
+		buf.WriteString("nil ")
+	} else {
+		buf.WriteString(o.Returns.String())
+		buf.WriteString(" ")
+	}
+	buf.WriteString(o.Name)
+	buf.WriteString("(")
+	for i, arg := range o.Args {
+		if i > 0 {
+			buf.WriteString(", ")
+		}
+		buf.WriteString(arg.String())
+	}
+	buf.WriteString(")")
+
+	return buf.String()
 }
 
 func newOp(code byte, name string, args []wasm.ValueType, returns wasm.ValueType) byte {
@@ -84,4 +106,17 @@ func New(code byte) (Op, error) {
 		return op, InvalidOpcodeError(code)
 	}
 	return op, nil
+}
+
+// OpSignature get the signature by operation code.
+func OpSignature(code byte) string {
+	if int(code) >= len(ops) {
+		return InvalidOpcodeError(code).Error()
+	}
+
+	if !ops[code].IsValid() {
+		return InvalidOpcodeError(code).Error()
+	}
+
+	return ops[code].String()
 }

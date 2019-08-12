@@ -352,6 +352,7 @@ func Compile(disassembly []disasm.Instr) ([]byte, *BytecodeMetadata) {
 			emitMetadata(ops.BrTable, buffer.Len(), instAndInt64Len)
 			buffer.WriteByte(ops.BrTable)
 			binary.Write(buffer, binary.LittleEndian, int64(len(branchTables)-1))
+			continue
 		}
 
 		startIndex := buffer.Len()

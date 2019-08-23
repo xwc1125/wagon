@@ -7,6 +7,7 @@ package validate
 
 import (
 	"bytes"
+	"errors"
 	"io"
 
 	"github.com/go-interpreter/wagon/wasm"
@@ -298,6 +299,9 @@ func verifyBody(fn *wasm.FunctionSig, body *wasm.FunctionBody, module *wasm.Modu
 			index, err := vm.fetchVarUint()
 			if err != nil {
 				return vm, err
+			}
+			if index >= uint32(len(module.Types.Entries)) {
+				return vm, errors.New("validate: type index out of range in call_indirect")
 			}
 
 			fnExpectSig := module.Types.Entries[index]

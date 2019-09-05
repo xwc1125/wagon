@@ -10,7 +10,7 @@ const (
 	FixedStackIdx         = 16 * 1024
 	MaxDataMemSize        = 16 * 1024
 	DefaultMinHeapMemSize = 64 * 1024
-	DefaultMaxHeapMemSize = 256 * 1024
+	DefaultMaxHeapMemSize = 1024 * 1024
 )
 
 var (

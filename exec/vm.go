@@ -52,6 +52,13 @@ type Backend interface {
 	Caller() []byte
 }
 
+type FeeBackend interface {
+	AddFee(fee uint64)
+	GetFee() uint64
+	SetFee(fee uint64)
+	CalFee(realCost uint64, currentFee uint64)
+}
+
 type context struct {
 	stack   []uint64
 	locals  []uint64
@@ -574,11 +581,17 @@ func (vm *VM) Run() (rtrn interface{}, err error) {
 }
 
 func (vm *VM) execCode(compiled compiledFunction) uint64 {
+	feeOps, ok := vm.ops.(FeeBackend)
+	if !ok {
+		panic("[vm] execCode: ops must implements FeeBackend")
+	}
 outer:
 	for int(vm.ctx.pc) < len(vm.ctx.code) && !vm.abort {
 		vm.trace()
 		op := vm.ctx.code[vm.ctx.pc]
 		vm.ctx.pc++
+
+		preFee := feeOps.GetFee()
 		switch op {
 		case ops.Return:
 			break outer
@@ -677,9 +690,13 @@ outer:
 
 			cost, err := operation.gasCost(vm)
 			if err != nil {
+				feeOps.SetFee(preFee)
 				panic(fmt.Sprintf("[vm] execCode: calc gas fail: %s", err))
 			}
 			if !vm.ops.UseGas(cost) {
+				currentFee := feeOps.GetFee() - preFee
+				realCost := cost - currentFee
+				feeOps.CalFee(realCost, currentFee)
 				panic("[vm] execCode: OutOfGas")
 			}
 			if vm.ops.IsTracing() {

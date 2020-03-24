@@ -631,6 +631,7 @@ func init() {
 		execute: func(vm *VM) { vm.currentMemory() },
 		gasCost: constGasFunc(GasFastestStep),
 	}
+	// GrowMemory should be removed
 	opSet[ops.GrowMemory] = operation{
 		execute: func(vm *VM) { vm.growMemory() },
 		gasCost: constGasFunc(GasFastestStep),

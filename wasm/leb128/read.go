@@ -27,7 +27,7 @@ func readVarUint(r io.Reader, n uint) (uint64, error) {
 		}
 		b := uint64(p[0])
 		switch {
-		case b < 1<<7 && b < 1<<n:
+		case b < 1<<7 && b <= 1<<n-1:
 			res += (1 << shift) * b
 			return res, nil
 		case b >= 1<<7 && n > 7:

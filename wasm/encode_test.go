@@ -6,7 +6,9 @@ package wasm_test
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
+	"math"
 	"os"
 	"path"
 	"path/filepath"
@@ -23,6 +25,10 @@ var skipModuleFilenames = map[string]bool{
 }
 
 func TestEncode(t *testing.T) {
+	v1 := math.MinInt32
+	v2 := -1
+	fmt.Println(v1 / v2)
+
 	for _, dir := range testPaths {
 		fnames, err := filepath.Glob(filepath.Join(dir, "*.wasm"))
 		if err != nil {
